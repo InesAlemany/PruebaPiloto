@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recuento de filas Excel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: una columna estrecha — zona de carga, indicador grande, desglose por hoja */
+:root {
+  --bg: #f5f5fb;
+  --surface: #ffffff;
+  --fg: #16163a;
+  --muted: #5d5d7f;
+  --line: #dcdcec;
+  --accent: #3633f6;
+  --accent-soft: #e9e9fe;
+  --ok: #18865a;
+  --font-display: "Montserrat", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Montserrat", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f0f1f; --surface: #1a1a33; --fg: #ececfa; --muted: #a3a3c4;
+    --line: #2d2d50; --accent: #8a88ff; --accent-soft: #24234d; --ok: #4cc993;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f0f1f; --surface: #1a1a33; --fg: #ececfa; --muted: #a3a3c4;
+  --line: #2d2d50; --accent: #8a88ff; --accent-soft: #24234d; --ok: #4cc993;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); padding: 32px 16px 48px; }
+.wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 20px; }
+h1 { font-family: var(--font-display); font-weight: 800; font-size: 1.6rem; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 0.95rem; line-height: 1.5; }
+
+.drop {
+  border: 2px dashed var(--line); border-radius: 12px; background: var(--surface);
+  padding: 22px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { margin: 0; flex: 1 1 220px; min-width: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+.btn {
+  font: 600 0.9rem var(--font-body); color: #fff; background: var(--accent);
+  border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer;
+}
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+input[type=file] { display: none; }
+
+.kpi {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 26px 24px; display: grid; gap: 6px;
+}
+.kpi-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.kpi-value {
+  font-family: var(--font-display); font-weight: 800; font-size: clamp(3.2rem, 14vw, 5.5rem);
+  line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.kpi-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 0.88rem; }
+.chip {
+  font-family: var(--font-data); font-size: 0.78rem; padding: 3px 8px; border-radius: 99px;
+  background: var(--accent-soft); color: var(--accent); overflow-wrap: anywhere;
+}
+.chip.example { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; font-size: 0.9rem; }
+.controls label { display: flex; gap: 8px; align-items: center; }
+select {
+  font: 500 0.9rem var(--font-body); color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; max-width: 100%;
+}
+
+.table-box { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+th { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+td.num { font-family: var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+th.num { text-align: right; }
+tr:last-child td { border-bottom: 0; }
+tr.active td { background: var(--accent-soft); }
+tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
+.err { color: #c0392b; font-size: 0.9rem; margin: 0; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Recuento de filas Excel</h1>
+    <p class="sub">Carga un archivo .xlsx, .xls o .csv y el indicador muestra cuántas filas con datos tiene. El archivo se lee en tu navegador y no se sube a ningún sitio.</p>
+  </header>
+
+  <div class="drop" id="drop">
+    <button class="btn" id="pick" type="button">Elegir archivo</button>
+    <p>o arrástralo aquí</p>
+    <input type="file" id="file" accept=".xlsx,.xls,.xlsm,.csv,.ods">
+  </div>
+  <p class="err" id="err" hidden></p>
+
+  <section class="kpi" aria-live="polite">
+    <span class="kpi-label">Filas con datos</span>
+    <span class="kpi-value" id="count">0</span>
+    <div class="kpi-meta">
+      <span class="chip" id="fname">ventas_2026.xlsx</span>
+      <span class="chip example" id="exampleTag">Datos de ejemplo</span>
+      <span id="detail"></span>
+    </div>
+  </section>
+
+  <div class="controls">
+    <label for="sheet">Hoja
+      <select id="sheet"></select>
+    </label>
+    <label for="header"><input type="checkbox" id="header" checked> La primera fila es cabecera (no contar)</label>
+  </div>
+
+  <div class="table-box">
+    <table>
+      <thead><tr><th>Hoja</th><th class="num">Filas con datos</th><th class="num">Columnas</th></tr></thead>
+      <tbody id="rows"></tbody>
+      <tfoot><tr><td>Total libro</td><td class="num" id="total">0</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("es-ES");
+const ALL = "__all__";
+let book = null; // { name, sheets: [{name, rows: [[...]]}] }
+
+// Ejemplo inicial para que la página muestre algo al abrirla
+function sampleBook() {
+  const mk = (n, cols) => [Array.from({length: cols}, (_, i) => "Col" + (i + 1))]
+    .concat(Array.from({length: n}, (_, r) => Array.from({length: cols}, (_, c) => r * cols + c)));
+  return { name: "ventas_2026.xlsx", example: true, sheets: [
+    { name: "Pedidos", rows: mk(1248, 8) },
+    { name: "Clientes", rows: mk(312, 5) },
+    { name: "Resumen", rows: mk(12, 4) }
+  ]};
+}
+
+const isEmptyRow = r => !r || r.every(v => v === null || v === undefined || String(v).trim() === "");
+
+function stats(sheet, skipHeader) {
+  const data = sheet.rows.filter(r => !isEmptyRow(r));
+  const cols = data.reduce((m, r) => Math.max(m, r.length), 0);
+  const n = Math.max(0, data.length - (skipHeader && data.length ? 1 : 0));
+  return { n, cols };
+}
+
+function render() {
+  const skip = $("header").checked;
+  const sel = $("sheet").value;
+  let total = 0;
+  $("rows").innerHTML = "";
+  book.sheets.forEach(s => {
+    const st = stats(s, skip);
+    total += st.n;
+    const tr = document.createElement("tr");
+    if (sel === s.name) tr.className = "active";
+    tr.innerHTML = `<td></td><td class="num">${fmt(st.n)}</td><td class="num">${fmt(st.cols)}</td>`;
+    tr.firstChild.textContent = s.name;
+    $("rows").appendChild(tr);
+  });
+  $("total").textContent = fmt(total);
+  const shown = sel === ALL ? total : stats(book.sheets.find(s => s.name === sel), skip).n;
+  animate(shown);
+  $("fname").textContent = book.name;
+  $("exampleTag").hidden = !book.example;
+  $("detail").textContent = sel === ALL
+    ? `${book.sheets.length} hojas · todo el libro`
+    : `hoja «${sel}»`;
+}
+
+let raf;
+function animate(target) {
+  const el = $("count");
+  const from = Number(el.dataset.v || 0);
+  el.dataset.v = target;
+  cancelAnimationFrame(raf);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || from === target) { el.textContent = fmt(target); return; }
+  const t0 = performance.now(), dur = 600;
+  const step = t => {
+    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(Math.round(from + (target - from) * e));
+    if (p < 1) raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+}
+
+function loadBook(b) {
+  book = b;
+  const s = $("sheet");
+  s.innerHTML = "";
+  const all = new Option("Todas las hojas", ALL);
+  s.add(all);
+  b.sheets.forEach(sh => s.add(new Option(sh.name, sh.name)));
+  s.value = b.sheets.length === 1 ? b.sheets[0].name : ALL;
+  render();
+}
+
+function readFile(file) {
+  $("err").hidden = true;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+      loadBook({ name: file.name, sheets: wb.SheetNames.map(n => ({
+        name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, blankrows: false, defval: null })
+      }))});
+    } catch (ex) {
+      $("err").textContent = "No se pudo leer «" + file.name + "». Comprueba que sea un Excel o CSV válido.";
+      $("err").hidden = false;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+$("pick").onclick = () => $("file").click();
+$("file").onchange = e => e.target.files[0] && readFile(e.target.files[0]);
+$("sheet").onchange = render;
+$("header").onchange = render;
+const drop = $("drop");
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]));
+
+loadBook(sampleBook());
+</script>
+
+</body>
+</html>

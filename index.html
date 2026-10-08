@@ -86,6 +86,8 @@ th.num { text-align: right; }
 tr:last-child td { border-bottom: 0; }
 tr.active td { background: var(--accent-soft); }
 tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
+[hidden] { display: none !important; }
+.detalle { display: grid; gap: 20px; }
 .err { color: #c0392b; font-size: 0.9rem; margin: 0; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -109,12 +111,13 @@ tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
     <span class="kpi-label">Filas con datos</span>
     <span class="kpi-value" id="count">0</span>
     <div class="kpi-meta">
-      <span class="chip" id="fname">ventas_2026.xlsx</span>
-      <span class="chip example" id="exampleTag">Datos de ejemplo</span>
+      <span class="chip" id="fname">Datos.xlsx</span>
+      <span class="chip example" id="exampleTag" hidden>Datos de ejemplo</span>
       <span id="detail"></span>
     </div>
   </section>
 
+  <div class="detalle" id="detalle" hidden>
   <div class="controls">
     <label for="sheet">Hoja
       <select id="sheet"></select>
@@ -129,6 +132,7 @@ tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
       <tfoot><tr><td>Total libro</td><td class="num" id="total">0</td><td></td></tr></tfoot>
     </table>
   </div>
+  </div>
 </div>
 
 <script>
@@ -136,17 +140,6 @@ const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString("es-ES");
 const ALL = "__all__";
 let book = null; // { name, sheets: [{name, rows: [[...]]}] }
-
-// Ejemplo inicial para que la página muestre algo al abrirla
-function sampleBook() {
-  const mk = (n, cols) => [Array.from({length: cols}, (_, i) => "Col" + (i + 1))]
-    .concat(Array.from({length: n}, (_, r) => Array.from({length: cols}, (_, c) => r * cols + c)));
-  return { name: "ventas_2026.xlsx", example: true, sheets: [
-    { name: "Pedidos", rows: mk(1248, 8) },
-    { name: "Clientes", rows: mk(312, 5) },
-    { name: "Resumen", rows: mk(12, 4) }
-  ]};
-}
 
 const isEmptyRow = r => !r || r.every(v => v === null || v === undefined || String(v).trim() === "");
 
@@ -199,6 +192,7 @@ function animate(target) {
 
 function loadBook(b) {
   book = b;
+  $("detalle").hidden = false;
   const s = $("sheet");
   s.innerHTML = "";
   const all = new Option("Todas las hojas", ALL);
@@ -234,7 +228,31 @@ const drop = $("drop");
 ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", e => e.dataTransfer.files[0] && readFile(e.dataTransfer.files[0]));
 
-loadBook(sampleBook());
+// Recuento que escribe Power Automate en datos.js (window.DATOS = { filas: N }).
+// Se vuelve a leer cada minuto; el ?v= evita que el navegador use una copia en caché.
+function cargarDatos() {
+  if (book) return; // se ha cargado un Excel a mano: no pisarlo
+  const s = document.createElement("script");
+  s.src = "datos.js?v=" + Date.now();
+  s.onload = () => {
+    s.remove();
+    if (book || !window.DATOS) return;
+    $("err").hidden = true;
+    animate(Number(window.DATOS.filas) || 0);
+    $("fname").textContent = "Datos.xlsx";
+    $("exampleTag").hidden = true;
+    $("detail").textContent = "Actualizado por Power Automate · " +
+      new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  };
+  s.onerror = () => {
+    s.remove();
+    $("err").textContent = "No se encuentra datos.js. Debe estar en la misma carpeta que esta página.";
+    $("err").hidden = false;
+  };
+  document.head.appendChild(s);
+}
+cargarDatos();
+setInterval(cargarDatos, 60000);
 </script>
 
 </body>
